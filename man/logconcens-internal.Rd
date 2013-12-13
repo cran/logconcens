@@ -6,18 +6,21 @@
 \alias{subdivisor}
 %
 \title{Internal logconcens functions}
-\description{Internal logconcens functions, usually not to be called by the user}
+\description{Internal logconcens functions, usually not to be called by the user.}
 \usage{
-GetWeights(tplus, p0, xindex, rightinf, phi, phislr, needsl)
+GetWeights(preweights,tplus, p0, xindex, rightinf, phi, phislr, needsl)
 J00(x, y, v = 1)
 J10(x, y)
-clc.fixdom(x, p0, force.inf = FALSE, tau, subdivide, domind1, domind2,
-   reduce = TRUE, maxiter = 49, knot.prec = IQR(x[x<Inf])/150,
-   move.prec = 1e-08, show = TRUE, verbose = FALSE)
+clc.fixdom(x, preweights=rep(1,dim(x)[1]), minw=0,
+   p0, adapt.p0 = FALSE, reduce=TRUE, red.thresh=NULL,
+   check.red=TRUE, force.inf=FALSE, tau, subdivide, domind1, 
+   domind2, maxiter=60, knot.prec=IQR(x[x<Inf])/75,
+   move.prec=1e-5, show=TRUE, verbose=FALSE)
 subdivisor(j, tau, eps = 0.01)
+phidivisor(j, tau, phi, eps=0.01)
 }
 \author{
-Dominic Schuhmacher \email{schuhmacher@stat.unibe.ch}\cr
+Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr
 Kaspar Rufibach \email{kaspar.rufibach@gmail.com}\cr
 Lutz Duembgen \email{duembgen@stat.unibe.ch}
 }

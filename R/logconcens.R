@@ -1,25 +1,17 @@
 #  
 #   logconcens.R
 #
-#   $Revision: 0.11.1 $   $Date: 2011/10/17 17:21:00 $
+#   $Revision: 0.16.3 $   $Date: 2013/12/12 20:18:00 $
 #
 #   Code by Dominic Schuhmacher
 #   Algorithm based on ideas by Lutz Duembgen, Kaspar Rufibach and Dominic Schuhmacher
 #
 #
-#   To do: -- Make GetWeights numerically more robust
-#             if one of the arguments is very small (and the other around zero))
+#   Next steps:  -- Implement clc.fixdom and everything below in C (maybe also the repeat loop in logcon)
 #
-#          -- Base (GetWeights and) loglike computations on sums integrals
-#             between kinks not tplus-values for more precision
+#                -- Enable domain selection based on loglikelihood comparison
 #
-#          -- (Fine-)tune domain reduction criterion
-#
-#          -- (Fine-)tune definition of move and delta, especially in the slope case
-#
-#          -- Enable domain selection based on loglikelihood comparison
-#
-#          -- Enable survival objects as arguments for logcon
+#                -- Enable survival objects as arguments for logcon
 #
 #
 #
@@ -28,13 +20,31 @@
 # right endpoints may take value Inf;
 # alternatively x may be a vector or n by 1 matrix in which case 
 #
-logConCens <- function(x, p0=0, show=FALSE, verbose=FALSE) {
-  logcon(x, p0, show=show, verbose=verbose)
+
+lc.control <- function(maxiter=49, move.prec=1e-5, domind1l=1, domind2r=1, force.inf=FALSE, red.thresh=NULL, check.red=TRUE, addpoints=FALSE, addeps=NULL, preweights=NULL, minw=0, show=FALSE, verbose=FALSE) {
+	
+  stopifnot(maxiter >= 0, move.prec > 0, domind1l >= 1, domind2r >= 1, is.logical(force.inf),
+    is.null(red.thresh) | (red.thresh > 0), is.logical(check.red), is.logical(addpoints),
+    is.null(addeps) | (addeps > 0), is.null(preweights) | (preweights > 0), minw >= 0, 
+    is.logical(show), is.logical(verbose))
+    	
+return(list(maxiter=maxiter, move.prec=move.prec, domind1l=domind1l, domind2r=domind2r, 
+  force.inf=force.inf, red.thresh=red.thresh, check.red=check.red, addpoints=addpoints, addeps=addeps,
+  preweights=preweights, minw=minw, show=show, verbose=verbose))
 }
+
+logconcure <- function(x, p0=0, knot.prec=IQR(x[x<Inf])/75, reduce=TRUE, control=lc.control()) {
+  logcon(x, adapt.p0=TRUE, p0=p0, knot.prec=knot.prec, reduce=reduce, control=control)
+}
+
+logConCens <- function(x, adapt.p0=FALSE, p0=0, knot.prec=IQR(x[x<Inf])/75, reduce=TRUE, control=lc.control()) {
+  logcon(x, adapt.p0, p0, knot.prec, reduce, control)
+}
+
+
+
 #
-#
-logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as.vector(x))),
-                   maxiter=49, knot.prec=IQR(x[x<Inf])/150, show=FALSE, verbose=FALSE) {
+logcon <- function(x, adapt.p0=FALSE, p0=0, knot.prec=IQR(x[x<Inf])/75, reduce=TRUE, control=lc.control()) {
 #prec=.Machine$double.eps^(1/2))
   if (is.vector(x) || (is.matrix(x) && ncol(x) == 1)) {
     n <- length(x)
@@ -54,11 +64,45 @@ logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as
   }
 
   n <- dim(x)[1]
+  
+  wh <- (x[,1] == x[,2])
+  if (length(unique(x[wh,1])) == 1) {
+  	mu <- x[wh,1]
+  	if (!adapt.p0 && all(x[,1] <= mu) && all(x[,2] >= mu)) {
+      stop("Maximum likelihood estimator for phi does not exist if the intersection of
+        all data intervals is equal to an exact observation")
+  	} else if (adapt.p0 && all((x[,1] <= mu & x[,2] >= mu) | x[,2] == Inf)) {
+      stop("Maximum likelihood estimator for (phi,p0) does not exist if there is an exact observation that is
+      contained in all bounded intervals")  		
+  	}
+  }
+    
   tau <- sort(unique(as.vector(x)))
   kk <- length(tau)
   k <- ifelse(is.finite(tau[kk]), kk, kk-1) # number of finite interval end points
   if ((tau[k-1]-tau[2])/knot.prec > 10000) { warning("knot.prec is very small compared to scale of data. Computations may take a long time") }
+  if (kk <= 2) {
+  	stop("There are only two distinct interval endpoints. If there are not exact observations at both endpoints,
+  	  every log-concave function on the interval [", tau[1], ", ", tau[2], "] will do if it has the right mass.")
+  }
   
+  ctrl <- do.call(lc.control, as.list(control))
+  maxiter <- ctrl$maxiter
+  move.prec <- ctrl$move.prec
+  domind1 <- ctrl$domind1l
+  domind2 <- kk+1-ctrl$domind2r 
+  force.inf <- ctrl$force.inf
+  red.thresh <- ctrl$red.thresh
+  check.red <- ctrl$check.red
+  addpoints <- ctrl$addpoints
+  addeps <- ctrl$addeps
+  if (is.null(addeps)) {addeps=1/n^2}
+  preweights <- ctrl$preweights
+  if (is.null(preweights)) {preweights <- rep(1,dim(x)[1])}
+  minw <- ctrl$minw
+  show <- ctrl$show
+  verbose <- ctrl$verbose
+
   if (p0 >= 1 || p0 < 0) { stop("p0 must be in [0,1)") }
   
   if (any(x[,1] > x[,2])) { stop("left interval point greater than right interval point") }
@@ -77,7 +121,23 @@ logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as
       stop("domind2 has to be an integer from ", d2, " to ", kk)
     }
   }
-
+  
+  if (addpoints) {
+  	#print(tau[1])
+  	#print(tau[k])
+    addtau1 <- !any((x[,1] == tau[1] & x[,2] == tau[1]))
+    addtauk <- !any((x[,1] == tau[k] & x[,2] == tau[k]))
+    if (addtau1) {	
+  	  x <- rbind(x, c(tau[1],tau[1]))
+  	  preweights <- c(preweights, addeps)
+  	}
+  	if (addtauk) {  
+  	  x <- rbind(x, c(tau[k],tau[k]))
+  	  preweights <- c(preweights, addeps)
+  	}
+  	n <- n + addtau1 + addtauk  
+  }
+  
   # subdivide[j]: does the interval [tau_j,tau_{j+1}] need subdivision
   # according to DRS11, Theorem 2.1 
   subdivide <- rep(TRUE, kk-1)
@@ -89,8 +149,9 @@ logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as
     if (!any(x[,1] <= tau[j] & x[,2] >= tau[j+1])) { subdivide[j] <- FALSE }
   }
   repeat {
-    fixres <- clc.fixdom(x, p0, force.inf, tau, subdivide, domind1, domind2,
-                         reduce=TRUE, maxiter=maxiter, knot.prec=knot.prec, show=show, verbose=verbose)
+    fixres <- clc.fixdom(x, preweights, minw, p0, adapt.p0, reduce, red.thresh, check.red, force.inf, tau, subdivide, domind1, domind2,
+                         maxiter=maxiter, knot.prec=knot.prec, move.prec=1e-5, show=show, verbose=verbose)
+    p0 <- fixres$p0new                    
     if (fixres$status >= 0) break
     if (fixres$status == -1) {
       domind1 <- domind1+1
@@ -104,11 +165,18 @@ logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as
       if (!any(x[,1] == tau[domind2]))  { subdivide[domind2-2] <- FALSE }
       message("Domain reduced on right hand side! New indices: ", domind1, " ",domind2)
     }
+    if (domind2-domind1 == 1) {
+      stop("Domain reduction led to a domain limited by two consecutive interval endpoints. If there are not
+        exact observations at both endpoints, every log-concave function on the interval [", tau[domind1], ", ", 
+        tau[domind2], "] will do if it has the right mass.")
+    }
   }
+
+  mm <- length(fixres$tplus)
+  m <- ifelse(is.finite(fixres$tplus[mm]), mm, mm-1)
+
   if (show) {
     dev.new()
-    mm <- length(fixres$tplus)
-    m <- ifelse(is.finite(fixres$tplus[mm]), mm, mm-1)
     uplim <- tau[k] + ifelse(k == kk, 0, 0.15*(tau[k]-tau[1]))
     plot(fixres$tplus[1:m], fixres$phi,xlim=c(tau[1],uplim), xlab="tau and t", ylab="phi", type="l",col=4,lwd=2)
     if (fixres$phislr > -Inf) { lines(c(fixres$tplus[m],uplim),
@@ -117,21 +185,49 @@ logcon <- function(x, p0=0, force.inf=FALSE, domind1=1, domind2=length(unique(as
     rug(fixres$tplus, ticksize=0.02)
     rug(tau, ticksize=0.04, lwd=1)
   }
+
+  cure.range = NA
+  phislr.range = NA
+  if (mm > m & adapt.p0) {
+    rint <- -exp(fixres$phi[m])/fixres$phislr
+    phislrleft <- (fixres$phi[m]-fixres$phi[m-1])/(fixres$tplus[m]-fixres$tplus[m-1])
+    p0max <- p0+rint
+    p0min <- max(0, p0max+exp(fixres$phi[m])/phislrleft)
+    phislrmax <- min(-exp(fixres$phi[m])/p0max, phislrleft)    
+    phislrmin <- -Inf
+    cure.range = c(p0min,p0max)
+    phislr.range = c(phislrmin,phislrmax)
+  } else if (kk > k & domind2==k & adapt.p0) {
+    # rint <- 0
+    # m is correct, since tplus[m] == tau[k] here
+    phislrleft <- (fixres$phi[m]-fixres$phi[m-1])/(fixres$tplus[m]-fixres$tplus[m-1])
+    p0max <- p0
+    p0min <- ifelse(phislrleft < 0, max(0,p0max+exp(fixres$phi[m])/phislrleft), 0)
+    phislrmax <- min(-exp(fixres$phi[m])/p0max, phislrleft)
+    phislrmin <- -Inf
+    cure.range = c(p0min,p0max)
+    phislr.range = c(phislrmin,phislrmax)  	
+  } 
+
   res <- list(basedOn="censored", status=fixres$status, x=x, tau=tau, domind1=domind1, domind2=domind2,
-              tplus=fixres$tplus, isKnot=fixres$isKnot, phi=fixres$phi, phislr=fixres$phislr, cure=p0,
-              force.inf=force.inf, Fhat=fixres$Fhat, Fhatfin=fixres$Fhatfin)
+              tplus=fixres$tplus, isKnot=fixres$isKnot, phi=pmax(fixres$phi,-1e100), phislr=fixres$phislr,
+              phislr.range=phislr.range, cure=p0, cure.range=cure.range,
+              Fhat=fixres$Fhat, Fhatfin=fixres$Fhatfin)
   class(res) <- "lcdensity"
   return(res)
 }
-
+# 10/12/2013:
+# pmax with -1e100 above is a quick an dirty fix for the case that phis at the boundary are -Inf
+# This can (apparantly) only happen with (one or ?) several alligned [L_i, Inf] intervals to the right of
+# everything
 
 
 # x is the original data (nx2 matrix)
 # tau is the ordered unique set of interval endpoints
 # domind1 and domind2 are the indices (for the tau-vector) of the left end right
 #    domain endpoints that shall be considered
-clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2, reduce=TRUE, maxiter=49, knot.prec=IQR(x[x<Inf])/150,
-                       move.prec=1e-8, show=TRUE, verbose=FALSE) {
+clc.fixdom <- function(x, preweights=rep(1,dim(x)[1]), minw=0, p0, adapt.p0 = FALSE, reduce=TRUE, red.thresh=NULL, check.red=TRUE, force.inf=FALSE, tau, subdivide, domind1, domind2, maxiter=60, knot.prec=IQR(x[x<Inf])/75,
+                       move.prec=1e-5, show=TRUE, verbose=FALSE) {
   if (dim(x)[2] != 2) { stop("x should be an n times 2 matrix") }
   n <- dim(x)[1]
   
@@ -162,6 +258,7 @@ clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2,
   tplus <- c(tau[c(domind1:domind2)], unlist(lapply(which(subdivide), subdivisor, tau=tau, eps=knot.prec)))
   tplus <- sort(tplus)  # there should be a faster way, since tau and tplus are already
                         # sorted and tau usually much shorter than tplus (also since we are computing the ranks)
+  dtplus <- diff(tplus)
   mm <- length(tplus)
   m <- ifelse(needsl, mm-1, mm)
   xx <- cbind(pmax(x[,1],tplus[1]), pmin(x[,2],tplus[mm]))
@@ -200,39 +297,43 @@ clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2,
   iter <- 1
   move <- 1
   while (iter <= maxiter && move > move.prec) {
-    ww <- GetWeights(tplus, p0, xindex, rightinf, phi, phislr, needsl)
-    # This is a simple safety net for choosing a (too) small delta-value below.
-    # Improving the numerical computations in GetWeights should help allowing smaller values of delta
-    # (if the latter is desirable at all)
+    ww <- GetWeights(preweights, tplus, p0, xindex, rightinf, phi, phislr, needsl)
+    # With the new version from 15/11/2013 of the function J10 (and J00) the next block should not be entered anymore!
     if (!all(is.finite(unlist(ww)))) {
       if(!is.finite(ww$w[1]) && canReduceL) {
         message("Cannot compute leftmost weight. Emergency domain reduction to the left. phi[1] is ", phi[1])
-        return(list(status=-1, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr))
+        return(list(status=-1, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr, p0new=p0))
       } else if (needsl && (!is.finite(ww$wslr) || !is.finite(ww$w[m])) && canReduceR) {
         message("Cannot compute rightmost weights. Emergency domain reduction to the right. phi[m] is ",
                 phi[m], ", phislr is ", phislr)
-        return(list(status=-2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr))
+        return(list(status=-2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr, p0new=p0))
       } else if (!needsl && !is.finite(ww$w[m]) && canReduceR) {
         message("Cannot compute rightmost weight. Emergency domain reduction to the right. phi[m] is ", phi[m])
-        return(list(status=-2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr))
+        return(list(status=-2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr, p0new=p0))
       } else {
         print(cat("w is \n", ww$w, "\n", "phi is \n", phi, "\n"))
         warning("Cannot compute all weights, but no further domain reduction possible.")
-        return(list(status=2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr))
+        return(list(status=2, tplus=tplus, isKnot=asres$isKnot, phi=phi, phislr=phislr, p0new=p0))
       }
     }
 
     if (verbose) {
       message("Minimal weight: ", min(ww$w), "   wslr: ", ww$wslr)
     }
-    if (min(ww$w) < 1e-10) { warning("small weights in call to logcon_slope") }
-    if (needsl & ww$wslr < 1e-10) { warning("small slope weight in call to logcon_slope") }
+    if ((min(ww$w) < 1e-10) && verbose) { warning("small weights in call to logcon_slope") }
+    if ((needsl & ww$wslr < 1e-10) && verbose) { warning("small slope weight in call to logcon_slope") }
     # The weights should always be positive (barring numerical problems)
     # so I skip the following; same for the block commented out below
     # wpos <- (w>0)
     # ww <- w[wpos]
     # ww <- ww/sum(ww)
     # tt <- tplus[wpos]
+    ww$w[1] <- max(ww$w[1], minw)
+    if (needsl) {
+      ww$wslr <- max(ww$wslr, minw)
+    } else {
+      ww$w[m] <- max(ww$w[m], minw)
+    }
     ww$w <- (1-p0)*ww$w/sum(ww$w)
     ww$wslr <- (1-p0)*ww$wslr
     # if p0 = 0 the above normalizations are not necessary (checked by manual computation)
@@ -242,7 +343,11 @@ clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2,
                  wslr = as.double(ww$wslr), p0=as.double(p0), is_knot = as.integer(numeric(m)),
                  phi_cur = as.double(numeric(m)), phi_cur_slr = as.double(numeric(1)),
                  Fhat = as.double(numeric(m)), Fhatfin = as.double(numeric(1)), L = as.double(numeric(1)))
-    move <- max(c(abs(asres$phi_cur - phi), ifelse(needsl, 1e-4*abs(asres$phi_cur_slr - phislr), 0)))
+    J00phimax <- J00( pmax(phi[1:(m-1)], asres$phi_cur[1:(m-1)]), pmax(phi[2:m], asres$phi_cur[2:m]) )
+    J00phimin <- J00( pmin(phi[1:(m-1)], asres$phi_cur[1:(m-1)]), pmin(phi[2:m], asres$phi_cur[2:m]) )
+    move1 <- sum(dtplus[1:m-1] * (J00phimax - J00phimin))
+    move <- move1 + ifelse(needsl, exp(max(phi[m],asres$phi_cur[m])) * abs(1/phislr-1/asres$phi_cur_slr), 0)
+    # move <- max(c(abs(asres$phi_cur - phi), ifelse(needsl, 1e-4*abs(asres$phi_cur_slr - phislr), 0)))
                                   # 1e-4 is a fudge factor as slope movement gets to important otherwise
                                   # on the other hand this means that our slope precision is for digits
                                   # worse than precision of phi-values
@@ -262,12 +367,15 @@ clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2,
       plot(tplus[1:m],phi,type="l")
       rug(tau[domind1:domind2])
     }
+    J00phi <- J00(phi[1:(m-1)],phi[2:m])
     # restriction of domain
     leftint <- (tplus[2]-tplus[1]) * J00(phi[1],phi[2])
     rightint <- ifelse( needsl, exp(phi[m])/(-phislr),  (tplus[m]-tplus[m-1]) * J00(phi[m-1],phi[m]))
     leftslope <- (phi[2]-phi[1]) / (tplus[2]-tplus[1])
     rightslope <- ifelse( needsl, phislr, (phi[m]-phi[m-1]) / (tplus[m]-tplus[m-1]) )
-    delta <- min(5e-4, (1e-2)/(domind2-domind1))
+    if (is.null(red.thresh)) {
+      red.thresh <- ifelse(check.red, 0.01, min(5e-4, (1e-2)/(domind2-domind1)))
+    }
     if (verbose) {
       cat("left int:", leftint, "\n")
       cat("right int:", rightint, "\n")
@@ -275,35 +383,137 @@ clc.fixdom <- function(x, p0, force.inf=FALSE, tau, subdivide, domind1, domind2,
       cat("right slope:", rightslope, "\n")
       cat("left phi:", phi[1], "\n")
       cat("right phi:", phi[m], "\n")
-      cat("compared to:", delta, "\n")
+      cat("compared to:", red.thresh, "\n")
     }
 #    lefttest <- (leftslope > 1e3)
 #    righttest <- (rightslope < -1e3)
-    lefttest <- (leftint < delta)
+    lefttest <- (leftint < red.thresh)   ###### ADD AND MOVE < XXX
+    #lefttest <- righttest <- (move < 1e-3)
       # eigentlich sollte das 10^(-5)/n sein, aber das dauert ewig!!
       # evtl. leftint und rightint durch entsprechende Intervallaengen der aeussersten Intervalle teilen
     if (lefttest && verbose) { message("Leftmost integral small") }
-    righttest <- (rightint < delta)
+    righttest <- (rightint < red.thresh)    ###### ADD AND MOVE < XXX
     if (righttest && verbose) { message("Rightmost integral small") }
     lefttest <- (lefttest && canReduceL)
     righttest <- (righttest && canReduceR)
     if (lefttest && righttest) {
-      return(list(status=-which.min(c(leftint,rightint)), tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr))
+      if (leftint <= rightint) {righttest <- FALSE} else {lefttest <- FALSE}
     }
-    if (lefttest) { return(list(status=-1, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr)) }
-    if (righttest) { return(list(status=-2, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr)) }
+    if (lefttest) {
+      if (!check.red) {
+      	return(list(status=-1, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, p0new=p0))
+      } else {
+        fstart <- rep(2,n)
+        fend <- pmin(xindex[,2],m) 
+        critfun <- function(i) {
+          integ <- ifelse(fstart[i] < fend[i], sum(dtplus[fstart[i]:(fend[i]-1)] * J00phi[fstart[i]:(fend[i]-1)]), 0)
+          crit0 <- ifelse(xindex[i,1] == 1, 1/(integ + (x[i,2] == Inf) * (p0 - ifelse(needsl, exp(phi[fend[i]])/phislr, 0))), 0)
+          return(crit0)
+        }
+        crit <- unlist(lapply(1:n, critfun))
+        # print(paste("Left",mean(crit)))
+        if (mean(crit) <= 1) { 
+          return(list(status=-1, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, p0new=p0))
+        }
+      }
+    }
+    if (righttest) {
+      if (!check.red) {
+      	return(list(status=-2, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, p0new=p0))
+      } else {    	
+      	# The following is not so great with adapt.p0
+      	# not clear why, (means just that phislr.range may be -Inf to -Inf or -Inf to very small
+      	# we catch this in plot)
+        if (needsl) {
+          fstart <- xindex[,1]
+          fend <- rep(mm-2,n) 
+          critfun <- function(i) {
+          	integ <- ifelse(fstart[i] < fend[i], sum(dtplus[fstart[i]:(fend[i]-1)] * J00phi[fstart[i]:(fend[i]-1)]), 0)
+          	crit0 <- ifelse(x[i,2] == Inf, 1/(integ + p0), 0)
+          # included here also (x[i,2] == Inf) * p0 ) unlike Lutz's suggestion, would like to reduce
+      	  # domain on the right also if p0>0, since the main argument for domain reduction is numerical stability
+      	  # and this is equally valid if p0>0
+          	return(crit0)
+          }
+          crit <- unlist(lapply(1:n, critfun))
+          #print(paste("Right+",mean(crit)))
+          if (mean(crit) <= 1) { 
+            return(list(status=-2, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, p0new=p0))
+          }	
+        } else {
+          fstart <- xindex[,1]
+          fend <- rep(m-1,n) 
+          critfun <- function(i) {
+          	integ <- ifelse(fstart[i] < fend[i], sum(dtplus[fstart[i]:(fend[i]-1)] * J00phi[fstart[i]:(fend[i]-1)]), 0)
+          	crit0 <- ifelse(xindex[i,2] >= m & xindex[i,1] < m, 1/(integ + (x[i,2] == Inf) * p0), 0)
+          	return(crit0)
+          }
+          crit <- unlist(lapply(1:n, critfun))
+          # print(paste("Right",mean(crit)))
+          if (mean(crit) <= 1) { 
+            return(list(status=-2, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, p0new=p0))
+          }	          
+        }
+      }
+    }
+    if (adapt.p0) {  
+        m1fun <- function(q) {
+          m1s <- subint <- rep(0,n)
+          #print(tplus)
+          #print(x)
+          #print(xx)
+          #print(xindex)
+          for (i in 1:n) {
+          	if(x[i,2] == Inf) {
+          	  # cat("\n subint \n",subint)
+              fstart <- xindex[i,1]
+              # The case of (automatically right-infinite) cut off intervals:
+              if (fstart == 0) {
+                subint[i] <- 0
+              } else {
+                fend <- m
+                #cat(i,fstart,fend,length(dtplus),length(J00phi),"\n")
+                subint[i] <- ifelse(fstart == fend, 0, sum(dtplus[fstart:(fend-1)] * J00phi[fstart:(fend-1)]))
+                #cat(i,subint[i],"\n")
+                if (needsl) {  
+                  subint[i] <- subint[i] - exp(phi[fend])/phislr
+                }
+              }
+              m1s[i] <- 1/(subint[i]+q)
+            }
+          }
+          return(mean(m1s)-1)
+        }
+        canReduceR <- reduce & !force.inf
+        if (m1fun(0) <= 0) {
+          p0 <- 0;
+          if (any(x[,1] == tau[domind2]) || any(x[,1] == tau[domind2-1] & x[,1] < x[,2])) {
+            canReduceR <- FALSE
+          }
+          cat("0 is opt. m1fun(0) =",m1fun(0), "\n")	
+        } else {
+          solu <- uniroot(m1fun,c(0,1))
+          cat("new p0:", solu$root, "\n")
+          p0 <- solu$root
+          if (any(is.finite(x[,2]) & x[,1] == tau[domind2]) || any(is.finite(x[,2]) & x[,1] == tau[domind2-1] & x[,1] < x[,2])) {
+            canReduceR <- FALSE
+          }
+        }
+        if (verbose) {
+          print(paste("canReduceR:", canReduceR))
+        }
+    }
     iter <- iter + 1
   }
   status <- ifelse(move <= move.prec, 0, 1)
-  return(list(status=status, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, Fhat=asres$Fhat, Fhatfin=asres$Fhatfin))
+  return(list(status=status, tplus=tplus, isKnot=isKnot, phi=phi, phislr=phislr, Fhat=asres$Fhat, Fhatfin=asres$Fhatfin, p0new=p0))
 }
 
 
 # GetWeights HAS NUMERICAL PROBLEMS if phi is very small (< -600) at boundary points;
-# should be numerically robustified to allow for a freer choice of delta (so far solved by an
-# emergency reduce slope in clc.fixdom im phi is below -600)
+# 03/12/13 fixed
 GetWeights <-
-function (tplus, p0, xindex, rightinf, phi, phislr, needsl)
+function (preweights, tplus, p0, xindex, rightinf, phi, phislr, needsl)
 # isKnot not used, but would be the goal for more efficient computation
 # "from kink to kink"
 {
@@ -344,13 +554,14 @@ function (tplus, p0, xindex, rightinf, phi, phislr, needsl)
     subw <- (xindex[,1] == j & xindex[,2] == j)
     subw <- subw + ifelse(j-1 >= fstart & j <= fend, dtplus[j-1]*J01phi[j-1]/PXinTX, 0) 
     subw <- subw + ifelse(j >= fstart & j+1 <= fend, dtplus[j]*J10phi[j]/PXinTX, 0)
-    w[j] <- mean(subw)
+    # evtl exp(log(a)-log(b)) statt a/b
+    w[j] <- sum(preweights*subw)/sum(preweights)
   }
   if (needsl) {
     subw <- ifelse(xindex[,2] == m+1, exp(phi[m])/(-phislr * PXinTX), 0)
-    w[m] <- w[m] + mean(subw)
+    w[m] <- w[m] + sum(preweights*subw)/sum(preweights)
     subw <- ifelse(xindex[,2] == m+1, exp(phi[m])/(phislr^2 * PXinTX), 0)
-    wslr <- mean(subw)
+    wslr <- sum(preweights*subw)/sum(preweights)
   }
   return(list(w=w, wslr=wslr))
 }
@@ -368,7 +579,7 @@ loglike <- function(lcd) {
 
   n <- dim(x)[1]
   mm <- length(tplus)
-  m <- ifelse(phislr > -Inf, mm-1, mm)
+  m <- ifelse(is.finite(lcd$tplus[mm]), mm, mm-1)
   dtplus <- diff(tplus)  
   J00phi <- J00(phi[1:(m-1)],phi[2:m])
   
@@ -401,13 +612,11 @@ loglike <- function(lcd) {
 
 
 
-cure.profile <- function(x, p0grid=seq(0,0.95,0.05), force.inf=FALSE, domind1=1,
-                         domind2=length(unique(as.vector(x))), maxiter=49, knot.prec=IQR(x[x<Inf])/150) {
+cure.profile <- function(x, p0grid=seq(0,0.95,0.05), knot.prec=IQR(x[x<Inf])/75, reduce=TRUE, control=lc.control()) {
   N <- length(p0grid)
   llike <- rep(0,N)
   for (i in 1:N) {
-    lcd <- logcon(x, p0=p0grid[i], force.inf=force.inf, domind1=domind1, domind2=domind2,
-                   maxiter=maxiter, knot.prec=knot.prec, show=FALSE, verbose=FALSE)
+    lcd <- logcon(x, adapt.p0=FALSE, p0=p0grid[i], knot.prec=knot.prec, reduce=reduce, control=control)
     llike[i] <- loglike(lcd)
     cat("p0 =", p0grid[i], "    loglike =", llike[i], "\n")
   }
@@ -424,11 +633,13 @@ J00 <- function (x, y, v = 1)
     m <- length(x)
     z <- exp(x)
     d <- y - x
-    II <- (1:m)[abs(d) > 0.005]
+    II <- (1:m)[abs(d) > 0.005 & d < 200]
     z[II] <- z[II] * (exp(v * d[II]) - 1)/d[II]
     II <- (1:m)[abs(d) <= 0.005]
     z[II] <- z[II] * (v + d[II] * (v/2 + d[II] * (v/6 + d[II] * 
         (v/24 + d[II] * v/120))))
+    II <- (1:m)[abs(d) > 0.005 & d >= 200]
+    z[II] <- (exp(y[II]) - exp(x[II]))/d[II]
     return(z)
 }
 
@@ -437,11 +648,15 @@ J10 <- function (x, y)
     m <- length(x)
     z <- exp(x)
     d <- y - x
-    II <- (1:m)[abs(d) > 0.01]
+    II <- (1:m)[abs(d) > 0.01 & d < 200]
     z[II] <- z[II] * (exp(d[II]) - 1 - d[II])/(d[II]^2)
     II <- (1:m)[abs(d) <= 0.01]
     z[II] <- z[II] * (1/2 + d[II] * (1/6 + d[II] * (1/24 + d[II] * 
         (1/120 + d[II]/720))))
+    II <- (1:m)[abs(d) > 0.01 & d >= 200]
+    z[II] <- (exp(y[II]) - exp(x[II]) * (d[II] + 1))/(d[II]^2)
+    # The case d large (usually from d > 715 on or so) is
+    # the only one that poses a practical problem for us
     return(z)
 }
 
@@ -476,12 +691,14 @@ phidivisor <- function(j,tau,phi,eps=0.01) {
 # ------------------------------------------
 
 # Pretty plot of x with t-grid
-plotint <- function(x, knot.prec=IQR(x[x<Inf])/150) {
+plotint <- function(x, knot.prec=IQR(x[x<Inf])/75, imarks=NULL) {
   finiteonly <- is.finite(max(x[,2]))
   finmax <- max(x[is.finite(x)])
   upper <- ifelse(finiteonly, max(x[,2]), finmax + 0.3*(finmax - min(x[,1])))
   upper2 <- ifelse(finiteonly, max(x[,2]), finmax + 0.5*(finmax - min(x[,1])))
-  plot(c(min(x[,1]),upper),c(0,-1),type="n",axes=TRUE,xlab="tau and t",ylab="")
+  plot(c(min(x[,1]),upper),c(0,-1),type="n",axes=FALSE,xlab="tau and t",ylab="")
+  box()
+  axis(1)
 
   n <- dim(x)[1]
   tau <- sort(unique(as.vector(x)))
@@ -508,11 +725,19 @@ plotint <- function(x, knot.prec=IQR(x[x<Inf])/150) {
     xx[,2][xx[,2] == Inf] <- upper2
   }
   segments(xx[,1],seq(0,-1,length.out=n),xx[,2],seq(0,-1,length.out=n))
+  wh <- which(xx[,1]==xx[,2])
+  points(xx[wh],seq(0,-1,length.out=n)[wh])
+  
+  if (!is.null(imarks)) {
+    points(imarks[order(x[,1])], seq(0,-1,length.out=n), pch="x", cex=max(0.2,0.9-n/300))	
+  }
+  
+  invisible()
 }
 
 
 # plot method for lcdensity class
-plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "survival"), kinklines=TRUE,
+plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "survival"), sloperange=TRUE, kinklines=TRUE,
                            kinkpoints=FALSE, xlim=NULL, ylim=NULL, ...)
 {
   lcd <- x
@@ -570,7 +795,7 @@ plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "surviva
     if (type == "CDF") {
       plot(xi, Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
            main=paste("Fhat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
-           xlab="x", ylab="f", ...)
+           xlab="x", ylab="F", ...)
       lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(0,0), col=4, lwd=2, ...)
       lines(c(xi[n], xi[n]+0.04*diff(xlim)), c(1-lcd$cure,1-lcd$cure), col=4, lwd=2, ...)  
       if (kinkpoints) {
@@ -584,7 +809,7 @@ plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "surviva
     if (type == "survival") {
       plot(xi, 1-Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
            main=paste("Shat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
-           xlab="x", ylab="f", ...)
+           xlab="x", ylab="S", ...)
       lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(1,1), col=4, lwd=2, ...)
       lines(c(xi[n], xi[n]+0.04*diff(xlim)), c(lcd$cure,lcd$cure), col=4, lwd=2, ...)  
       if (kinkpoints) {
@@ -618,12 +843,21 @@ plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "surviva
     }
     knotlist <- match(xiknots,xi)
     n <- length(xiknots)
+    
+    # for the grey areas (since lcd$phislr.range may be == -Inf and we still want to draw something)
+    phislrlow <- max(lcd$phislr.range[1], -1e8)
+    phislrhigh <- max(lcd$phislr.range[2], -1e8)
+    # since by numerical problems we can get -Inf -Inf for lcd$phislr.range[2]
 
     if (type == "log-density") {
       if (is.null(ylim)) { ylim <- range(lcd$phi) + c(ifelse(lcd$phislr > -Inf, min(-0.6*diff(range(lcd$phi)), lcd$phislr * 0.2*diff(range(tplus[1:m]))), 0), 0) }
       plot(xi, eta, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
            main=paste("log-density", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
            xlab="x", ylab="phi", ...)
+      if (sloperange & !is.na(lcd$cure.range[1])) {
+         polygon(c(tplus[m], xlim[2]+0.04*diff(xlim), xlim[2]+0.04*diff(xlim)), c(lcd$phi[m], lcd$phi[m]+phislrlow*(xlim[2]+0.04*diff(xlim)-tplus[m]), lcd$phi[m]+phislrhigh*(xlim[2]+0.04*diff(xlim)-tplus[m])), border=NA, col=grey(0.9), lwd=1, ...)
+         box()      	
+      }
       if (lcd$phislr > -Inf) {
         lines(c(xiknots[n], xlim[2]+0.04*diff(xlim)), c(etaknots[n], etaknots[n]+lcd$phislr*(xlim[2]+0.04*diff(xlim)-xiknots[n])), col=4, lwd=2, ...) 
       }
@@ -643,6 +877,18 @@ plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "surviva
            main=paste("density", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
            xlab="x", ylab="f", ...)
       lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(0,0), col=4, lwd=2, ...)
+      if (sloperange & !is.na(lcd$cure.range[1])) {
+        extraxi <- subdivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), eps=stp)
+        extraxi <- c(tplus[m], extraxi, xlim[2]+0.04*diff(xlim))
+        extraeta1 <- phidivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), phi=c(lcd$phi[m], lcd$phi[m]+phislrlow*(xlim[2]+0.04*diff(xlim)-tplus[m])), eps=stp)
+        extraeta1 <- c(lcd$phi[m], extraeta1, lcd$phi[m]+phislrlow*(xlim[2]+0.04*diff(xlim)-tplus[m]))
+        extraeta2 <- phidivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), phi=c(lcd$phi[m], lcd$phi[m]+phislrhigh*(xlim[2]+0.04*diff(xlim)-tplus[m])), eps=stp)
+        extraeta2 <- c(lcd$phi[m], extraeta2, lcd$phi[m]+phislrhigh*(xlim[2]+0.04*diff(xlim)-tplus[m]))
+        extraxi <- c(extraxi,rev(extraxi))
+        extraeta <- c(extraeta1,rev(extraeta2))
+        polygon(extraxi, exp(extraeta), border=NA, col=grey(0.9), lwd=1, ...)
+        box()      	
+      }
       if (lcd$phislr > -Inf) {
         extraxi <- subdivisor(1, tau=c(xiknots[n], xlim[2]+0.04*diff(xlim)), eps=stp)
         extraxi <- c(xiknots[n], extraxi, xlim[2]+0.04*diff(xlim))
@@ -662,63 +908,94 @@ plot.lcdensity <- function(x, type = c("log-density", "density", "CDF", "surviva
       rug(lcd$tau, ticksize=0.04, lwd=1)
     }
     
-    # the following is for type="CDF" and "survival"
-    if (is.null(ylim)) { ylim <- c(0,1) }
-    subint <- diff(xi) * J00(eta[-n],eta[-1])
-    Fhat <- c(0,cumsum(subint))
-    if (lcd$phislr > -Inf) {
-      extraxi <- subdivisor(1, tau=c(xiknots[n], xlim[2]+0.04*diff(xlim)), eps=stp)
-      extraxi <- c(xiknots[n], extraxi, xlim[2]+0.04*diff(xlim))
-      extraeta <- phidivisor(1, tau=c(xiknots[n], xlim[2]+0.04*diff(xlim)), phi=c(etaknots[n], etaknots[n]+lcd$phislr*(xlim[2]+0.04*diff(xlim)-xiknots[n])), eps=stp)
-      extraeta <- c(etaknots[n], extraeta, etaknots[n]+lcd$phislr*(xlim[2]+0.04*diff(xlim)-xiknots[n]))
-      extrasubint <- diff(extraxi) * J00(extraeta[-n],extraeta[-1])
-      extraFhat <- tail(Fhat,1) + c(0,cumsum(extrasubint))
-    }
-    #
-    if (type == "CDF") {
-      plot(xi, Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
-           main=paste("Fhat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
-           xlab="x", ylab="f", ...)
-      lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(0,0), col=4, lwd=2, ...)
+    if (type == "CDF" | type == "survival") {
+      if (is.null(ylim)) { ylim <- c(0,1) }
+      subint <- diff(xi) * J00(eta[-n],eta[-1])
+      Fhat <- c(0,cumsum(subint))
+      if (sloperange & !is.na(lcd$cure.range[1])) {
+        extraxi <- subdivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), eps=stp)
+        extraxi <- c(tplus[m], extraxi, xlim[2]+0.04*diff(xlim))	
+        extraeta1 <- phidivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), phi=c(lcd$phi[m],
+          lcd$phi[m]+phislrlow*(xlim[2]+0.04*diff(xlim)-tplus[m])), eps=stp)
+        extraeta1 <- c(lcd$phi[m], extraeta1, lcd$phi[m]+phislrlow*(xlim[2]+0.04*diff(xlim)-tplus[m]))
+        extrasubint1 <- diff(extraxi) * J00(extraeta1[-n],extraeta1[-1])
+        extraFhat1 <- tail(lcd$Fhat,1) + c(0,cumsum(extrasubint1))
+        extraeta2 <- phidivisor(1, tau=c(tplus[m], xlim[2]+0.04*diff(xlim)), phi=c(lcd$phi[m],
+          lcd$phi[m]+phislrhigh*(xlim[2]+0.04*diff(xlim)-tplus[m])), eps=stp)
+        extraeta2 <- c(lcd$phi[m], extraeta2, lcd$phi[m]+phislrhigh*(xlim[2]+0.04*diff(xlim)-tplus[m]))
+        extrasubint2 <- diff(extraxi) * J00(extraeta2[-n],extraeta2[-1])
+        extraFhat2 <- tail(lcd$Fhat,1) + c(0,cumsum(extrasubint2)) 
+
+        extraxigrey <- c(extraxi,rev(extraxi))
+        extraFhatgrey <- c(extraFhat1,rev(extraFhat2))   
+      }
       if (lcd$phislr > -Inf) {
-        lines(extraxi, extraFhat, col=4, lwd=2, ...)
-      } else {
-        lines(c(xiknots[n], xlim[2]+0.04*diff(xlim)), c(1-lcd$cure,1-lcd$cure), col=4, lwd=2, ...)  
+        extraxi <- subdivisor(1, tau=c(xiknots[n], xlim[2]+0.04*diff(xlim)), eps=stp)
+        extraxi <- c(xiknots[n], extraxi, xlim[2]+0.04*diff(xlim))
+        extraeta <- phidivisor(1, tau=c(xiknots[n], xlim[2]+0.04*diff(xlim)), phi=c(etaknots[n],
+          etaknots[n]+lcd$phislr*(xlim[2]+0.04*diff(xlim)-xiknots[n])), eps=stp)
+        extraeta <- c(etaknots[n], extraeta, etaknots[n]+lcd$phislr*(xlim[2]+0.04*diff(xlim)-xiknots[n]))
+        extrasubint <- diff(extraxi) * J00(extraeta[-n],extraeta[-1])
+        extraFhat <- tail(Fhat,1) + c(0,cumsum(extrasubint))
+        #print(extraxi)
+        #print(extraeta)
+        #print(extrasubint)
+        #print(extraFhat)
       }
-      abline(h=c(0,1-lcd$cure), lty=2, col="gray70")
-      if (kinkpoints) {
-        points(xiknots, Fhat[knotlist], pch=19, ...)
+      #
+      if (type == "CDF") {
+        plot(xi, Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
+             main=paste("Fhat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
+             xlab="x", ylab="F", ...)
+        lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(0,0), col=4, lwd=2, ...)
+        if (sloperange & !is.na(lcd$cure.range[1])) {      
+          polygon(extraxigrey, extraFhatgrey, border=NA, col=grey(0.9), lwd=1, ...)
+          box()      	      
+        }
+        if (lcd$phislr > -Inf) {
+          lines(extraxi, extraFhat, col=4, lwd=2, ...)
+        } else {
+          lines(c(xiknots[n], xlim[2]+0.04*diff(xlim)), c(1-lcd$cure,1-lcd$cure), col=4, lwd=2, ...)  
+        }
+        abline(h=c(0,1-lcd$cure), lty=2, col="gray70")
+        if (kinkpoints) {
+          points(xiknots, Fhat[knotlist], pch=19, ...)
+        }
+        if (kinklines) {
+          abline(v=xiknots, lty=3, col=4, ...)
+        }
+        rug(lcd$tplus, ticksize=0.02)
+        rug(lcd$tau, ticksize=0.04, lwd=1)
       }
-      if (kinklines) {
-        abline(v=xiknots, lty=3, col=4, ...)
+      #
+      if (type == "survival") {
+        plot(xi, 1-Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
+             main=paste("Shat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
+             xlab="x", ylab="S", ...)
+        lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(1,1), col=4, lwd=2, ...)
+        if (sloperange & !is.na(lcd$cure.range[1])) {      
+          polygon(extraxigrey, 1-extraFhatgrey, border=NA, col=grey(0.9), lwd=1, ...)
+          box()      	      
+        }
+        if (lcd$phislr > -Inf) {
+          lines(extraxi, 1-extraFhat, col=4, lwd=2, ...)
+        } else {
+          lines(c(xiknots[n], xlim[2]+0.04*diff(xlim)), c(lcd$cure,lcd$cure), col=4, lwd=2, ...)  
+        }
+        abline(h=c(lcd$cure,1), lty=2, col="gray70")
+        if (kinkpoints) {
+          points(xiknots, 1-Fhat[knotlist], pch=19, ...)
+        }
+        if (kinklines) {
+          abline(v=xiknots, lty=3, col=4, ...)
+        }
+        rug(lcd$tplus, ticksize=0.02)
+        rug(lcd$tau, ticksize=0.04, lwd=1)
       }
-      rug(lcd$tplus, ticksize=0.02)
-      rug(lcd$tau, ticksize=0.04, lwd=1)
-    }
-    #
-    if (type == "survival") {
-      plot(xi, 1-Fhat, xlim=xlim, ylim=ylim, type="l", col=4, lwd=2,
-           main=paste("Shat", ifelse(is.null(lcd$cure),"",paste(" (cure param. = ", lcd$cure, ")", sep="")), sep=""),
-           xlab="x", ylab="f", ...)
-      lines(c(xi[1]-0.04*diff(xlim), xi[1]), c(1,1), col=4, lwd=2, ...)
-      if (lcd$phislr > -Inf) {
-        lines(extraxi, 1-extraFhat, col=4, lwd=2, ...)
-      } else {
-        lines(c(xiknots[n], xlim[2]+0.04*diff(xlim)), c(lcd$cure,lcd$cure), col=4, lwd=2, ...)  
-      }
-      abline(h=c(lcd$cure,1), lty=2, col="gray70")
-      if (kinkpoints) {
-        points(xiknots, 1-Fhat[knotlist], pch=19, ...)
-      }
-      if (kinklines) {
-        abline(v=xiknots, lty=3, col=4, ...)
-      }
-      rug(lcd$tplus, ticksize=0.02)
-      rug(lcd$tau, ticksize=0.04, lwd=1)
     }
   }
+  invisible()
 }
-
 
 # print method for lcdensity class
 print.lcdensity <- function(x, ...) {
@@ -743,9 +1020,9 @@ print.lcdensity <- function(x, ...) {
     if (!is.null(lcd$cure)) {
       cat("Cure parameter p0 = ", lcd$cure, "\n", sep="")
     }
-    if (lcd$force.inf) {
-      cat("Right-hand slope was enforced.\n")
-    }
+#    if (lcd$force.inf) {
+#      cat("Right-hand slope was enforced.\n")
+#    }
   }
   invisible(lcd)
 }
@@ -769,11 +1046,12 @@ summary.lcdensity <- function(object, ...) {
   phiatknots <- lcd$phi[as.logical(lcd$isKnot)]
   phislr <- lcd$phislr
   Fhatatknots <- lcd$Fhat[as.logical(lcd$isKnot)]
-  if (is.null(lcd$cure)) {
+  if (is.na(lcd$cure.range[1])) {
     return(list(basedOn=basedOn, status=status, domind=domind, dom=dom, knots=knots, phiatknots=phiatknots,
-              phislr=phislr, cure=lcd$cure, force.inf=lcd$force.inf, Fhatatknots=Fhatatknots))
+              phislr=phislr, cure=lcd$cure, Fhatatknots=Fhatatknots))
   } else {
     return(list(basedOn=basedOn, status=status, domind=domind, dom=dom, knots=knots, phiatknots=phiatknots,
-              phislr=phislr, cure=lcd$cure, force.inf=lcd$force.inf, Fhatatknots=Fhatatknots))
+              phislr=phislr, phislr.range=lcd$phislr.range, cure=lcd$cure, cure.range=lcd$cure.range,
+              Fhatatknots=Fhatatknots))
   }
 }

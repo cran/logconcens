@@ -6,41 +6,66 @@
 Maximum likelihood estimation of a log-concave density based on censored data. 
 }
 \description{
-Based on independent intervals \eqn{X_i = [L_i,R_i]}, where \eqn{-\infty < L_i \leq R_i \leq \infty}{-Inf < L_i <= R_i <= Inf}, compute the maximum likelihood estimator of a density under the assumption that it is log-concave. For further information see Duembgen, Schuhmacher, and Rufibach (2011, preprint).
+Based on independent intervals \eqn{X_i = [L_i,R_i]}, where \eqn{-\infty < L_i \leq R_i \leq \infty}{-Inf < L_i <= R_i <= Inf}, compute the maximum likelihood estimator of a (sub)probability density under the assumption that it is log-concave. For further information see Duembgen, Rufibach, and Schuhmacher (2013, preprint).
 }
 \details{
 \tabular{ll}{
 Package: \tab logconcens\cr
 Type: \tab Package\cr
-Version: \tab 0.11-2\cr
-Date: \tab 2011-10-17\cr
+Version: \tab 0.16-4\cr
+Date: \tab 2013-12-13\cr
 License: \tab GPL (>=2)\cr
 LazyLoad: \tab yes\cr
 }
-The main function is \code{\link{logcon}}, which offers computation of the MLE for censored and also exact data and allows the setting of various parameters that are mainly related to control of the underlying EM algorithm in \dQuote{difficult} situations. An object of type \code{lcdensity} is returned, for which \code{\link[=plot.lcdensity]{plot}}, \code{\link[=print.lcdensity]{print}}, and \code{\link[=summary.lcdensity]{summary}} methods have been (partly) implemented. There is also a function \code{\link{loglike}} to compute the log-likelihood of a \code{lcdensity} object.  
+The main function is \code{\link{logcon}}, which offers computation of the MLE for many types of censored and also exact data. Various parameters can be set that allow for fine control of the underlying EM algorithm in \dQuote{difficult} situations. An object of type \code{lcdensity} is returned, for which \code{\link[=plot.lcdensity]{plot}}, \code{\link[=print.lcdensity]{print}}, and \code{\link[=summary.lcdensity]{summary}} methods are available. There is also a function \code{\link{loglike}} for computing the log-likelihood of a \code{lcdensity} object.  
 }
 \author{
-Dominic Schuhmacher \email{schuhmacher@stat.unibe.ch}\cr
+Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr
 Kaspar Rufibach \email{kaspar.rufibach@gmail.com}\cr
 Lutz Duembgen \email{duembgen@stat.unibe.ch}
 
-Maintainer: Dominic Schuhmacher \email{schuhmacher@stat.unibe.ch}
+Maintainer: Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr
 }
 \references{
-Duembgen, L., Schuhmacher, D., Rufibach, K. (2011, preprint). Maximum likelihood estimation of a log-concave density based on censored data.
+Duembgen, L., Rufibach, K., and Schuhmacher, D. (2013, preprint). Maximum likelihood estimation of a log-concave density based on censored data. Available at \url{http://arxiv.org/pdf/1311.6403v2.pdf}.
 }
 \keyword{package}
 \examples{
+## Simple examples with simulated data.
+## For more detailed examples see the help for the function logcon.
+
 ## exact data
 set.seed(10)
 x <- rnorm(100)
 res <- logcon(x)
-\dontrun{plot(res)}
+\dontrun{
+plot(res)
+xi <- seq(-3,3,0.05)
+lines(xi,log(dnorm(xi)))}
 
-## censored data
-x <- matrix(rnorm(100),50,2)
-x <- t(sapply(split(x,1:50), sort))
+## interval censored data
+x <- rgamma(50,3,1)
+x <- cbind(x,x+rexp(50,1))
 plotint(x)
-res <- logcon(x, show=FALSE)
-\dontrun{plot(res)}
+res <- logcon(x)
+\dontrun{plot(res, type="CDF")}
+
+## right censored data with mass at infinity
+set.seed(11)
+x <- rgamma(50,3,1)
+x <- cbind(x,ifelse(rexp(50,1/3) < x,Inf,x))
+plotint(x)
+res <- logcon(x,adapt.p0=TRUE)
+\dontrun{plot(res, type="survival")}
+
+## rounded/binned data
+set.seed(12)
+x <- round(rnorm(100))
+x <- cbind(x-0.5,x+0.5)
+plotint(x)
+res <- logcon(x)
+\dontrun{
+plot(res)
+xi <- seq(-3,3,0.05)
+lines(xi,log(dnorm(xi)))}
 }

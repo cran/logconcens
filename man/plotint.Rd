@@ -2,15 +2,13 @@
 \alias{plotint}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-  Plotting of censored data.
+  Plot censored data.
 }
 \description{
-  Plot a graphical representation of censored data, given as two-column matrix \code{x} containing in each
-  row the left and right endpoints of a data interval.
-  The grid of potential knots used by \code{logcon} is also shown.
+  Plot a graphical representation of censored data specified by a two-column matrix of left and right interval endpoints. The grid of potential knots used by \code{logcon} is also shown.
 }
 \usage{
-plotint(x, knot.prec = IQR(x[x<Inf])/150) 
+plotint(x, knot.prec = IQR(x[x<Inf])/75, imarks = NULL) 
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -21,12 +19,15 @@ plotint(x, knot.prec = IQR(x[x<Inf])/150)
     the maximal distance between two consecutive grid points in the depiction of the grid used by
     \code{logcon}.
 }
+  \item{imarks}{
+    an optional vector of \dQuote{spots} to be marked by \sQuote{x} for the intervals.
+}
 }
 \value{
 Used for the side effect.
 }
 \author{
-Dominic Schuhmacher \email{schuhmacher@stat.unibe.ch}\cr
+Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr
 Kaspar Rufibach \email{kaspar.rufibach@gmail.com}\cr
 Lutz Duembgen \email{duembgen@stat.unibe.ch}
 }
