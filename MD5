@@ -1,6 +1,6 @@
-3cbaae52bb589910cbf28edc59431d29 *DESCRIPTION
-498f8c54db441823d7d6f148067be52b *NAMESPACE
-2cd26c9526b12df2b1c1fc69b5974845 *R/logconcens.R
+9c53ee802ad75c4c17dec2f07a1ca6c8 *DESCRIPTION
+be821d3475f92de7762424f4344fd840 *NAMESPACE
+2f05f88feee70124a60168602f4db810 *R/logconcens.R
 d696d02364e9f5c16a1eb635c90b44af *man/cure.profile.Rd
 bfda19f050520ab727a9e6701b424b14 *man/lc.control.Rd
 921fd20bb6361db3ebe640c73bee3327 *man/lcdensity-methods.Rd
@@ -9,5 +9,6 @@ d63a8ea637e87ae54d31a6ba0b87a3f2 *man/logcon.Rd
 7dad25def745669a79d3b37705010bf4 *man/logconcens-package.Rd
 917b9ad9397657d03bb83540c54cdf0e *man/loglike.Rd
 37aa02d59b987bda58a389cc1820ac92 *man/plotint.Rd
-415cb7ed6d87a75c5794917a85e3af96 *src/Makevars
+2a6f9e9e044a78154d3cfda5936d6f48 *src/Makevars
 09421c75e427ac9abffd2219a35a5669 *src/logconcens.c
+6fc5e3bd46d90d54ea8b6ad347375d18 *src/logconcens_init.c

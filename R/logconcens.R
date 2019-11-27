@@ -354,8 +354,8 @@ clc.fixdom <- function(x, preweights=rep(1,dim(x)[1]), minw=0, p0, adapt.p0 = FA
                                   #
                                   # Untenstehendes bezog sich auf Summe
                                   # Scheint mir nicht so das geeignete Kriterium 25/08/11
-                                  # besseres was mit Integral, aber das hier ist natürlich einfacher zu berechnen
-                                  # Etwas positives hier ist natürlich, dass bei abschmierendem Rand
+                                  # besseres was mit Integral, aber das hier ist natuerlich einfacher zu berechnen
+                                  # Etwas positives hier ist natuerlich, dass bei abschmierendem Rand
                                   # sicher nicht ploetzlich der move klein werden kann
     if (verbose) {
       message("Move: ", move, "   iter: ", iter)
