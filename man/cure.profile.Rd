@@ -2,7 +2,7 @@
 \alias{cure.profile}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-  Evaluate the profile log-likelihood on a grid of \eqn{p_0}-values.
+  Evaluate the Profile Log-Likelihood on a Grid of \eqn{p_0}-Values
 }
 \description{
 For each of a series of values for the cure parameter \eqn{p_0}{p0} run the function \code{logcon} and evaluate the (normalized) log-likelihood at \eqn{(\phi,p_0)}{(phi,p_0)}, where \eqn{\phi}{phi} is the log subprobability density returned by \code{logcon}. This serves for (approximate) joint likelihood maximization in \eqn{(\phi,p_0)}{(phi,p0)}.

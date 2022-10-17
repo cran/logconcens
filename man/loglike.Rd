@@ -2,7 +2,7 @@
 \alias{loglike}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Compute log-likelihood for an object of class \code{lcdensity}.
+Compute Log-Likelihood for an Object of Class \code{lcdensity}
 }
 \description{
 Compute the (normalized) log-likelihood for an object of class \code{lcdensity} as described in the details section for the function \code{\link{logcon}}. The main use of this function is for comparing different results from \code{logcon} based on different (starting) domains.

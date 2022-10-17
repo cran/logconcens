@@ -2,7 +2,7 @@
 \alias{plotint}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-  Plot censored data.
+  Plot Censored Data
 }
 \description{
   Plot a graphical representation of censored data specified by a two-column matrix of left and right interval endpoints. The grid of potential knots used by \code{logcon} is also shown.

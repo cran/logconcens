@@ -4,7 +4,7 @@
 \alias{logConCens}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Compute log-concave MLE based on censored or exact data.
+Compute Log-Concave MLE Based on Censored or Exact Data
 }
 \description{
 Based on independent intervals \eqn{X_i = [L_i,R_i]}, where \eqn{-\infty < L_i \leq R_i \leq \infty}{-Inf < L_i <= R_i <= Inf}, compute the maximum likelihood estimator of a (sub)probability density \eqn{\phi}{phi} and the remaining mass \eqn{p_0}{p0} at infinity (also known as \emph{cure parameter}) under the assumption that the former is log-concave. Computation is based on an EM algorithm. For further information see Duembgen, Rufibach, and Schuhmacher (2013, preprint).
@@ -93,11 +93,11 @@ If the argument \code{x} is a two-column matrix (censored data case), such an ob
 }
 
 \references{
-Duembgen, L., Huesler, A., and Rufibach, K. (2007). Active set and EM algorithms for log-concave densities based on complete and censored data. Technical Report 61. IMSV, University of Bern. \url{http://arxiv.org/abs/0707.4643}
+Duembgen, L., Huesler, A., and Rufibach, K. (2007). Active set and EM algorithms for log-concave densities based on complete and censored data. Technical Report 61. IMSV, University of Bern. \url{https://arxiv.org/abs/0707.4643}
 
-Duembgen, L. and Rufibach, K., (2011). logcondens: Computations Related to Univariate Log-Concave Density Estimation. Journal of Statistical Software, 39(6), 1-28. \url{http://www.jstatsoft.org/v39/i06}
+Duembgen, L. and Rufibach, K., (2011). logcondens: Computations Related to Univariate Log-Concave Density Estimation. Journal of Statistical Software, 39(6), 1-28. \doi{10.18637/jss.v039.i06}
 
-Duembgen, L., Rufibach, K., and Schuhmacher, D. (2013, preprint). Maximum likelihood estimation of a log-concave density based on censored data. \url{http://arxiv.org/pdf/1311.6403v2.pdf}
+Duembgen, L., Rufibach, K., and Schuhmacher, D. (2014). Maximum-likelihood estimation of a log-concave density based on censored data. Electronic Journal of Statistics, 8(1), 1405-1437. \doi{10.1214/14-EJS930}
 }
 \author{
 Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr

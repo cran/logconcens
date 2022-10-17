@@ -2,7 +2,7 @@
 
    logcon_slope.c
 
-   $Revision: 0.10.0 $   $Date: 2011/09/13 22:34:00 $  
+   $Revision: 0.10.1 $   $Date: 2022/10/17 $  
 
    Code by Dominic Schuhmacher
    Ported and extended based on Matlab code by Lutz Duembgen and R code by Kaspar Rufibach
@@ -121,19 +121,21 @@ double amaxabs(int n, double *a);
    rs.phi_cur instead of rs.phi_new, which is based on the idea that if the dirderiv is
    not significantly bigger than 0 we don't bother to return the new phi;
    it wouldn't hurt if we did, would it?  */
-void logcon_slope(sl, pn, x, w, wslr, p0, is_knot, phi_cur, phi_cur_slr, Fhat, Fhatfin, L) 
+void logcon_slope(int *sl, int *pn, double *x, double *w, double *wslr, double *p0, 
+                  int *is_knot, double *phi_cur, double *phi_cur_slr, double *Fhat,
+                  double *Fhatfin, double *L)
   /* careful: w is assumed to be already normalised so that it sums to 1 */
   /* inputs */
-  int *sl;
-  int *pn;
-  double *x, *w, *wslr; 
-  double *p0; 
+  //int *sl;
+  // int *pn;
+  // double *x, *w, *wslr; 
+  // double *p0; 
   /* outputs */
-  int *is_knot; 
-  double *phi_cur, *phi_cur_slr;
-  double *Fhat;
-  double *Fhatfin;
-  double *L;
+  // int *is_knot; 
+  // double *phi_cur, *phi_cur_slr;
+  // double *Fhat;
+  // double *Fhatfin;
+  // double *L;
 { 
   int i, j, iter1, n;
   int argmax;  /* used for H (as argmax) */

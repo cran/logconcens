@@ -3,7 +3,7 @@
 \alias{control}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Set the control parameters for logcon.
+Set the Control Parameters for \code{logcon}
 }
 \description{
 Allows to set the control parameters for the more technical aspects of the function \code{\link{logcon}} and provides default values for any parameters that are not set.

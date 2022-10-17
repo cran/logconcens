@@ -3,7 +3,7 @@
 \alias{logconcens}
 \docType{package}
 \title{
-Maximum likelihood estimation of a log-concave density based on censored data. 
+Maximum Likelihood Estimation of a Log-Concave Density Based on Censored Data 
 }
 \description{
 Based on independent intervals \eqn{X_i = [L_i,R_i]}, where \eqn{-\infty < L_i \leq R_i \leq \infty}{-Inf < L_i <= R_i <= Inf}, compute the maximum likelihood estimator of a (sub)probability density under the assumption that it is log-concave. For further information see Duembgen, Rufibach, and Schuhmacher (2013, preprint).
@@ -27,7 +27,7 @@ Lutz Duembgen \email{duembgen@stat.unibe.ch}
 Maintainer: Dominic Schuhmacher \email{dominic.schuhmacher@mathematik.uni-goettingen.de}\cr
 }
 \references{
-Duembgen, L., Rufibach, K., and Schuhmacher, D. (2013, preprint). Maximum likelihood estimation of a log-concave density based on censored data. Available at \url{http://arxiv.org/pdf/1311.6403v2.pdf}.
+Duembgen, L., Rufibach, K., and Schuhmacher, D. (2014). Maximum-likelihood estimation of a log-concave density based on censored data. Electronic Journal of Statistics, 8(1), 1405-1437. \doi{10.1214/14-EJS930}
 }
 \keyword{package}
 \examples{

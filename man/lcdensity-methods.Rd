@@ -5,7 +5,7 @@
 \alias{summary.lcdensity}
 
 \title{
-Methods for objects of class \code{lcdensity}.
+Methods for Objects of Class \code{lcdensity}
 }
 \description{
 Plot, print, and summary methods for objects of class \code{lcdensity}.

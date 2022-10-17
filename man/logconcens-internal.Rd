@@ -5,7 +5,7 @@
 \alias{clc.fixdom}
 \alias{subdivisor}
 %
-\title{Internal logconcens functions}
+\title{Internal logconcens Functions}
 \description{Internal logconcens functions, usually not to be called by the user.}
 \usage{
 GetWeights(preweights,tplus, p0, xindex, rightinf, phi, phislr, needsl)
