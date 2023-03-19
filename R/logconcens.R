@@ -51,7 +51,7 @@ logcon <- function(x, adapt.p0=FALSE, p0=0, knot.prec=IQR(x[x<Inf])/75, reduce=T
     x <- sort(x)
     w <- rep((1-p0)/n,n)
     # is *very* quick anyway if x is already sorted
-    res <- .C("logcon_slope", sl=as.integer(FALSE), pn = as.integer(n), x = as.double(x), w = as.double(w),
+    res <- .C(C_logcon_slope, sl=as.integer(FALSE), pn = as.integer(n), x = as.double(x), w = as.double(w),
                  wslr = as.double(0),  p0=as.double(p0), is_knot = as.integer(numeric(n)),
                  phi_cur = as.double(numeric(n)), phi_cur_slr = as.double(numeric(1)),
                  Fhat = as.double(numeric(n)), Fhatfin = as.double(numeric(1)), L = as.double(numeric(1)))
@@ -338,7 +338,7 @@ clc.fixdom <- function(x, preweights=rep(1,dim(x)[1]), minw=0, p0, adapt.p0 = FA
     ww$wslr <- (1-p0)*ww$wslr
     # if p0 = 0 the above normalizations are not necessary (checked by manual computation)
     # otherwise yes
-    asres <- .C("logcon_slope", sl=as.integer(needsl), pn = as.integer(m), x = as.double(tplus[1:m]),
+    asres <- .C(C_logcon_slope, sl=as.integer(needsl), pn = as.integer(m), x = as.double(tplus[1:m]),
                  w = as.double(ww$w),
                  wslr = as.double(ww$wslr), p0=as.double(p0), is_knot = as.integer(numeric(m)),
                  phi_cur = as.double(numeric(m)), phi_cur_slr = as.double(numeric(1)),

@@ -3,7 +3,7 @@ importFrom("graphics", "abline", "axis", "box", "lines", "par", "plot", "points"
 importFrom("stats", "IQR", "uniroot")
 importFrom("utils", "tail")
 
-useDynLib(logconcens, .registration = TRUE)
+useDynLib(logconcens, .registration = TRUE, .fixes = "C_")
 
 export("logcon", "logconcure", "lc.control", "loglike", "cure.profile", "plotint")
 S3method("plot", "lcdensity")
