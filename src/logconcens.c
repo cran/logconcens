@@ -2,23 +2,16 @@
 
    logcon_slope.c
 
-   $Revision: 0.10.1 $   $Date: 2022/10/17 $  
+   Revision: 0.17.1   Date: 2022/10/17   
+   (maintenance fix: replace old-style K&R functions)
 
    Code by Dominic Schuhmacher
    Ported and extended based on Matlab code by Lutz Duembgen and R code by Kaspar Rufibach
 
 */
 
-/* release notes:
-0.10.0: generalize algorithm for arbitrary sub prob. densities
-        (correct the normalizations to 1 done for numerical reasons)
-*/   
 
-/* #include <stdio.h> */
-/* #include <stdlib.h> */
 #include <math.h>
-/* #include <Rmath.h> */
-/* Rmath.h is only used for imax2, in diagnostic printing; remove in the end */
 #include <R.h>
 #include <R_ext/Lapack.h>
 #include <R_ext/Utils.h>
@@ -114,7 +107,7 @@ double amaxabs(int n, double *a);
 
 /* ------------ The main function ----------------------------- */
 
-/* Funktionsname wie in .C aufgerufen, Name des .c-Files ist aber egal */
+/* function name as called in .C */
 /* N.B.: logcon implicitly returns phi_cur; localmle implicitly returns state.phi_new,
    mle implicitly return rs.phi_cur; rather confusing (cur vs. new I mean), but there
    seems to be no easy way around it (the confusing thing is really that mle returns
@@ -883,9 +876,6 @@ void LocalExtend_slope(RState *rs, State *state)
    (in loccon we make appropriate computations directly),  */
 void LocalConvexity_slope(RState *rs, State *state)
   /* implicit output written at state->conv_new */
-  /* Das ist (vermutlich der einzige) Grund, weshalb meine Resultate sich leicht
-     von Lutz' und Kaspars Resultaten unterscheiden ich benutze rdx zur Berechnung
-     statt dx                                                                    */
 {
   int i,j,n,rn;
   int lastknot;

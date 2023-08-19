@@ -1,18 +1,11 @@
 #  
 #   logconcens.R
 #
-#   $Revision: 0.16.3 $   $Date: 2013/12/12 20:18:00 $
+#   Revision: 0.17.2    Date: 2023/03/19 
+#   (maintenance fix: native symbols in .C calls instead of character strings)
 #
 #   Code by Dominic Schuhmacher
 #   Algorithm based on ideas by Lutz Duembgen, Kaspar Rufibach and Dominic Schuhmacher
-#
-#
-#   Next steps:  -- Implement clc.fixdom and everything below in C (maybe also the repeat loop in logcon)
-#
-#                -- Enable domain selection based on loglikelihood comparison
-#
-#                -- Enable survival objects as arguments for logcon
-#
 #
 #
 
@@ -20,7 +13,6 @@
 # right endpoints may take value Inf;
 # alternatively x may be a vector or n by 1 matrix in which case 
 #
-
 lc.control <- function(maxiter=49, move.prec=1e-5, domind1l=1, domind2r=1, force.inf=FALSE, red.thresh=NULL, check.red=TRUE, addpoints=FALSE, addeps=NULL, preweights=NULL, minw=0, show=FALSE, verbose=FALSE) {
 	
   stopifnot(maxiter >= 0, move.prec > 0, domind1l >= 1, domind2r >= 1, is.logical(force.inf),
